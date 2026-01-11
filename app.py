@@ -28,7 +28,7 @@ hide_st_style = """
                 font-family: sans-serif;
                 font-size: 56px;
                 font-weight: 800;
-                color: #000000; /* 純黑 */
+                color: #000000;
                 text-align: center;
                 margin: 15px 0;
             }
@@ -52,10 +52,9 @@ hide_st_style = """
                 font-weight: 700;
                 color: #000000;
             }
-            /* 項目說明 (您指定的公式文字) */
             .item-label-sub {
                 font-size: 14px;
-                color: #555555; /* 深灰 */
+                color: #555555;
                 margin-top: 4px;
                 font-weight: 500;
             }
@@ -67,8 +66,7 @@ hide_st_style = """
                 color: #000000;
             }
             
-            /* === 關鍵修改：強制輸入框為 白底黑字 === */
-            /* 針對數字輸入框 */
+            /* 輸入框強制白底黑字 */
             .stNumberInput input {
                 background-color: #ffffff !important;
                 color: #000000 !important;
@@ -76,7 +74,6 @@ hide_st_style = """
                 font-weight: bold !important;
                 font-size: 18px !important;
             }
-            /* 針對下拉選單 */
             div[data-baseweb="select"] > div {
                 background-color: #ffffff !important;
                 color: #000000 !important;
@@ -84,17 +81,12 @@ hide_st_style = """
                 font-weight: bold !important;
                 font-size: 18px !important;
             }
-            /* 下拉選單內的文字顏色 */
             div[data-baseweb="select"] span {
                 color: #000000 !important;
             }
             
-            /* 背景設為淺灰 */
-            .stApp {
-                background-color: #f0f0f2;
-            }
-            
-            /* 調整標籤文字顏色 */
+            /* 背景與標籤 */
+            .stApp { background-color: #f0f0f2; }
             label p {
                 font-size: 18px !important;
                 color: #000000 !important;
@@ -105,16 +97,25 @@ hide_st_style = """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
 # ==========================================
-# 1. 系統參數與資料庫
+# 1. 系統參數與資料庫 (v3.3 更新版)
 # ==========================================
 ELEC_RATE = 5.0      
 LOSS_RATE = 0.05     
 
+# 更新機台資料庫：加入 400T ~ 1000T
+# 費率來源：您的CSV檔案
+# 馬達/週期/最大載重：依噸數比例推算的工程估計值
 MACHINE_DB = {
-    (50, 99):   {"rate": 8,  "motor_kw": 15, "dry_cycle": 3.0, "max_weight": 80},
-    (100, 199): {"rate": 13, "motor_kw": 30, "dry_cycle": 4.5, "max_weight": 250},
-    (200, 299): {"rate": 15, "motor_kw": 45, "dry_cycle": 5.5, "max_weight": 450},
-    (300, 399): {"rate": 17, "motor_kw": 60, "dry_cycle": 6.0, "max_weight": 800},
+    (50, 99):     {"rate": 8,  "motor_kw": 15, "dry_cycle": 3.0, "max_weight": 80},
+    (100, 199):   {"rate": 13, "motor_kw": 30, "dry_cycle": 4.5, "max_weight": 250},
+    (200, 299):   {"rate": 15, "motor_kw": 45, "dry_cycle": 5.5, "max_weight": 450},
+    (300, 399):   {"rate": 17, "motor_kw": 60, "dry_cycle": 6.0, "max_weight": 800},
+    # --- 新增區段 ---
+    (400, 499):   {"rate": 20, "motor_kw": 75, "dry_cycle": 7.0, "max_weight": 1200},
+    (500, 599):   {"rate": 25, "motor_kw": 90, "dry_cycle": 8.0, "max_weight": 1800},
+    (600, 699):   {"rate": 25, "motor_kw": 110, "dry_cycle": 9.0, "max_weight": 2500},
+    (700, 999):   {"rate": 28, "motor_kw": 130, "dry_cycle": 10.0, "max_weight": 3500}, # 涵蓋至999T
+    (1000, 3000): {"rate": 35, "motor_kw": 160, "dry_cycle": 12.0, "max_weight": 8000},
 }
 
 MATERIAL_DB = {
@@ -136,14 +137,16 @@ PACKING_OPTIONS = {
 
 # 輔助函式
 def get_auto_tonnage(weight):
+    # 自動選機邏輯更新：若超過所有設定，預設選最大台
     for r, data in MACHINE_DB.items():
         if weight <= data["max_weight"]: return int((r[0] + r[1]) / 2)
-    return 350
+    return 1000 # 超過 3500g 預設選 1000T
 
 def get_machine_data(t):
     for r, data in MACHINE_DB.items():
         if r[0] <= t <= r[1]: return data
-    return {"rate": 20, "motor_kw": 50, "dry_cycle": 6.0}
+    # 若找不到(例如輸入8000噸)，回傳最大值參數避免報錯
+    return {"rate": 35, "motor_kw": 160, "dry_cycle": 12.0}
 
 def estimate_cycle(weight, mat_key, thickness_key, machine_data):
     mat_data = MATERIAL_DB.get(mat_key, {})
@@ -168,7 +171,6 @@ class SmartInjectionQuote:
         self.cycle_sec = cycle_sec
         self.machine_data = get_machine_data(tonnage)
         self.mat_data = MATERIAL_DB.get(material, {})
-        # 抓取包裝設定
         self.pack_data = PACKING_OPTIONS.get(packing, {"rate": 2.0, "base": 0, "name": "未知"})
 
     def compute(self):
@@ -195,31 +197,16 @@ class SmartInjectionQuote:
         ship_total = max(500, total_w * 2.0)
         unit_ship_cost = ship_total / self.batch
         
-        # 總價
         final_price = unit_mat_cost + unit_process_cost + unit_basic_cost + unit_pack_cost + unit_ship_cost
 
         return {
             "Meta": {"機台": f"{self.tonnage}T", "週期": f"{self.cycle_sec}s"},
             "Cost_Structure": [
-                {"name": "1.材料費", 
-                 "sub": "成品重量*原料單價(公斤/元)", 
-                 "val": unit_mat_cost},
-                 
-                {"name": "2.射出費", 
-                 "sub": "機台費用(分/元)*材料加成係數*射出時間(分)", 
-                 "val": unit_process_cost},
-                 
-                {"name": "3.基本費", 
-                 "sub": "(烘料費用+洗料費用+調機費用+上下模+暖機)/批量", 
-                 "val": unit_basic_cost},
-                 
-                {"name": "4.包裝費", 
-                 "sub": self.pack_data["name"], 
-                 "val": unit_pack_cost},
-                 
-                {"name": "5.運費", 
-                 "sub": "國內回頭車", 
-                 "val": unit_ship_cost}
+                {"name": "1.材料費", "sub": "成品重量*原料單價(公斤/元)", "val": unit_mat_cost},
+                {"name": "2.射出費", "sub": "機台費用(分/元)*材料加成係數*射出時間(分)", "val": unit_process_cost},
+                {"name": "3.基本費", "sub": "(烘料費用+洗料費用+調機費用+上下模+暖機)/批量", "val": unit_basic_cost},
+                {"name": "4.包裝費", "sub": self.pack_data["name"], "val": unit_pack_cost},
+                {"name": "5.運費", "sub": "國內回頭車", "val": unit_ship_cost}
             ],
             "Total_Price": final_price
         }
@@ -228,7 +215,7 @@ class SmartInjectionQuote:
 # 3. 前端介面設計
 # ==========================================
 
-st.markdown("<h2 style='text-align: center; color: #000000; font-weight: 800; font-size: 32px;'>射出成本計算 v3.2</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #000000; font-weight: 800; font-size: 32px;'>射出成本計算 v3.3</h2>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #333333; font-size: 18px; font-weight: bold;'>無軸封泵浦品技課專用</p>", unsafe_allow_html=True)
 
 # 輸入卡片
@@ -238,7 +225,6 @@ col1, col2 = st.columns(2)
 with col1:
     weight_g = st.number_input("產品重量 (g)", value=200.0, step=10.0)
     batch_size = st.number_input("批量 (pcs)", value=50, step=50)
-    # 包裝顯示名稱與計算分離
     packing_labels = list(PACKING_OPTIONS.keys())
     packing = st.selectbox("包裝", packing_labels)
 with col2:
@@ -272,7 +258,6 @@ calculator = SmartInjectionQuote(weight_g, material, batch_size, thickness, pack
 res = calculator.compute()
 
 if res:
-    # 四捨五入取整數
     final_total_int = int(round(res['Total_Price']))
     
     st.markdown(f"""
@@ -283,7 +268,6 @@ if res:
     """, unsafe_allow_html=True)
     
     for item in res["Cost_Structure"]:
-        # 每一項金額也四捨五入取整
         val_int = int(round(item['val']))
         
         st.markdown(f"""
