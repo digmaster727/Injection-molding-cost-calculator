@@ -2,69 +2,91 @@ import streamlit as st
 import pandas as pd
 
 # ==========================================
-# 0. Apple UI 風格設定 (CSS魔法區)
+# 0. 介面優化：大字體 + 純黑高對比 (High Contrast CSS)
 # ==========================================
-st.set_page_config(page_title="射出報價", page_icon="🍎", layout="centered")
+st.set_page_config(page_title="射出報價", page_icon="🏭", layout="centered")
 
-# 隱藏 Streamlit 預設選單與 footer
+# CSS 樣式表
 hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
             header {visibility: hidden;}
             
-            /* Apple 風格卡片 */
+            /* 卡片背景：維持白色，但邊框加深 */
             .apple-card {
                 background-color: #ffffff;
-                border-radius: 16px;
-                padding: 20px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-                margin-bottom: 20px;
-                border: 1px solid #f0f0f5;
+                border-radius: 12px;
+                padding: 25px;
+                box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+                margin-bottom: 25px;
+                border: 2px solid #d1d1d6; /* 邊框加深 */
             }
             
-            /* 報價大數字 */
+            /* 價格大字：由藍改深藍，字體特大 */
             .price-tag {
-                font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                font-size: 42px;
-                font-weight: 700;
-                color: #007AFF; /* Apple Blue */
+                font-family: sans-serif;
+                font-size: 56px;  /* 特大 */
+                font-weight: 800; /* 特粗 */
+                color: #0040DD;   /* 深藍色 (高對比) */
                 text-align: center;
-                margin-top: 10px;
-                margin-bottom: 10px;
+                margin: 15px 0;
             }
             
-            /* 列表項目 */
+            /* 列表項目容器 */
             .list-item {
                 display: flex;
                 justify-content: space-between;
-                padding: 12px 0;
-                border-bottom: 1px solid #f0f0f5;
-                font-family: -apple-system, sans-serif;
-                color: #1c1c1e;
+                align-items: center; /* 垂直置中 */
+                padding: 16px 0;     /* 間距拉大 */
+                border-bottom: 2px solid #e5e5ea; /* 分隔線加粗 */
+                color: #000000;      /* 純黑 */
             }
             .list-item:last-child {
                 border-bottom: none;
             }
-            .item-label {
-                font-size: 15px;
-                color: #8e8e93; /* Apple Gray */
+            
+            /* 項目名稱 (左邊) */
+            .item-label-main {
+                font-size: 22px;     /* 放大 */
+                font-weight: 700;    /* 加粗 */
+                color: #000000;      /* 純黑 */
             }
-            .item-value {
+            .item-label-sub {
                 font-size: 16px;
-                font-weight: 600;
+                color: #333333;      /* 深灰，不做淺灰 */
+                margin-top: 4px;
             }
             
-            /* 輸入區塊背景微調 */
+            /* 項目數值 (右邊) */
+            .item-value {
+                font-size: 24px;     /* 放大 */
+                font-weight: 700;    /* 加粗 */
+                color: #000000;      /* 純黑 */
+            }
+            
+            /* 調整 Streamlit 原生輸入框字體 */
+            .stNumberInput input, .stSelectbox div[data-baseweb="select"] div {
+                font-size: 18px !important;
+                font-weight: 600 !important;
+                color: #000000 !important;
+            }
+            p, label {
+                font-size: 18px !important;
+                color: #000000 !important;
+                font-weight: 600 !important;
+            }
+            
+            /* 背景設為淺灰，對比白色卡片 */
             .stApp {
-                background-color: #F2F2F7; /* iOS Settings Background */
+                background-color: #f0f0f2;
             }
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
 # ==========================================
-# 1. 系統參數與資料庫 (邏輯完全保留)
+# 1. 系統參數與資料庫 (維持不變)
 # ==========================================
 ELEC_RATE = 5.0      
 LOSS_RATE = 0.05     
@@ -148,26 +170,25 @@ class SmartInjectionQuote:
         return {
             "Meta": {"機台": f"{self.tonnage}T", "週期": f"{self.cycle_sec}s"},
             "Cost_Structure": [
-                {"name": "材料費", "sub": "含5%損耗", "val": unit_mat_cost},
-                {"name": "射出費", "sub": "含電費與技術加成", "val": unit_process_cost},
-                {"name": "基本費", "sub": "暖機與調機攤提", "val": unit_basic_cost},
-                {"name": "包裝費", "sub": self.packing.split('-')[0], "val": unit_pack_cost},
-                {"name": "運費", "sub": "國內回頭車", "val": unit_ship_cost}
+                {"name": "1.材料費", "sub": "含5%損耗", "val": unit_mat_cost},
+                {"name": "2.射出費", "sub": "機台+技術+電費", "val": unit_process_cost},
+                {"name": "3.基本費", "sub": "暖機電費+調機", "val": unit_basic_cost},
+                {"name": "4.包裝費", "sub": self.packing.split('-')[0], "val": unit_pack_cost},
+                {"name": "5.運費", "sub": "國內回頭車", "val": unit_ship_cost}
             ],
             "Total_Price": round(final_price, 2)
         }
 
 # ==========================================
-# 3. 前端介面設計 (Apple Style)
+# 3. 前端介面設計 (大字體版)
 # ==========================================
 
 # 標題區
-st.markdown("<h2 style='text-align: center; color: #1c1c1e;'>Injection Cost</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #8e8e93; font-size: 14px;'>無軸封泵浦報價系統 v3.0</p>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #000000; font-weight: 800; font-size: 32px;'>射出成本計算 v3.1</h2>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #333333; font-size: 18px; font-weight: bold;'>無軸封泵浦品技課專用</p>", unsafe_allow_html=True)
 
 # 輸入卡片
 st.markdown('<div class="apple-card">', unsafe_allow_html=True)
-st.markdown('<h4 style="color: #1c1c1e; margin-bottom: 15px;">產品參數</h4>', unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 with col1:
@@ -183,39 +204,46 @@ suggested_tonnage = get_auto_tonnage(weight_g)
 temp_machine = get_machine_data(suggested_tonnage)
 suggested_cycle = estimate_cycle(weight_g, material, thickness, temp_machine)
 
-# 進階設定 (收合式)
-with st.expander("進階設定 (機台/週期)"):
-    use_manual = st.toggle("手動模式", value=False)
+st.divider() # 分隔線
+
+# 進階設定 (字體加粗)
+with st.expander("🛠️ 進階設定 (手動輸入機台/週期)"):
+    use_manual = st.toggle("開啟手動模式", value=False)
     if use_manual:
-        final_tonnage = st.number_input("機台 (Ton)", value=suggested_tonnage)
-        final_cycle = st.number_input("週期 (Sec)", value=suggested_cycle)
+        final_tonnage = st.number_input("機台噸數 (Ton)", value=suggested_tonnage)
+        final_cycle = st.number_input("成形週期 (秒)", value=suggested_cycle)
     else:
-        st.caption(f"系統自動鎖定: {suggested_tonnage}噸 / {suggested_cycle}秒")
+        # 顯示自動計算結果
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown(f"<p style='color:#333; font-size:16px;'>建議機台</p><p style='color:#000; font-size:24px; font-weight:bold;'>{suggested_tonnage} 噸</p>", unsafe_allow_html=True)
+        with col_b:
+            st.markdown(f"<p style='color:#333; font-size:16px;'>預估週期</p><p style='color:#000; font-size:24px; font-weight:bold;'>{suggested_cycle} 秒</p>", unsafe_allow_html=True)
         final_tonnage = suggested_tonnage
         final_cycle = suggested_cycle
         
-st.markdown('</div>', unsafe_allow_html=True) # End card
+st.markdown('</div>', unsafe_allow_html=True) # End input card
 
 # 執行計算
 calculator = SmartInjectionQuote(weight_g, material, batch_size, thickness, packing, final_tonnage, final_cycle)
 res = calculator.compute()
 
 if res:
-    # 結果顯示區 - 模仿 Apple Wallet 交易明細
+    # 結果顯示區
     st.markdown(f"""
     <div class="apple-card">
-        <p style="text-align: center; color: #8e8e93; font-size: 14px; margin-bottom: 0;">預估單價</p>
-        <div class="price-tag">NT$ {res['Total_Price']}</div>
-        <hr style="border: 0; border-top: 1px solid #f0f0f5; margin: 20px 0;">
+        <p style="text-align: center; color: #000000; font-size: 20px; font-weight: bold; margin-bottom: 0;">預估單價 (NTD)</p>
+        <div class="price-tag">${res['Total_Price']}</div>
+        <hr style="border: 0; border-top: 2px solid #e5e5ea; margin: 20px 0;">
     """, unsafe_allow_html=True)
     
-    # 迴圈生成美觀的列表
+    # 迴圈生成高對比列表
     for item in res["Cost_Structure"]:
         st.markdown(f"""
         <div class="list-item">
             <div>
-                <div style="font-weight: 500;">{item['name']}</div>
-                <div class="item-label">{item['sub']}</div>
+                <div class="item-label-main">{item['name']}</div>
+                <div class="item-label-sub">{item['sub']}</div>
             </div>
             <div class="item-value">${item['val']:.2f}</div>
         </div>
@@ -223,11 +251,11 @@ if res:
 
     # 底部資訊
     st.markdown(f"""
-        <div style="margin-top: 20px; text-align: right; font-size: 12px; color: #c7c7cc;">
+        <div style="margin-top: 25px; text-align: center; font-size: 16px; color: #333333; font-weight: bold;">
             機台: {res['Meta']['機台']} | 週期: {res['Meta']['週期']}
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-# 按鈕美化 (Streamlit 原生按鈕無法完全改 CSS，但可用 primary 藍色)
+# 按鈕
 st.button("更新報價 ↻", type="primary", use_container_width=True)
