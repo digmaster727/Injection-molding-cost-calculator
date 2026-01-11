@@ -16,7 +16,8 @@ MACHINE_DB = {
 
 MATERIAL_DB = {
     "PP":   {"price": 54,   "factor": 1.0, "dryer_kw": 3, "dry_time": 2, "high_temp": False},
-    "PPG":  {"price": 72.5, "factor": 1.8, "dryer_kw": 3, "dry_time": 2, "high_temp": False}, # 新增這一行
+    "PPG":  {"price": 72.5, "factor": 1.8, "dryer_kw": 3, "dry_time": 2, "high_temp": False},
+    "PPC":  {"price": 258.1,"factor": 1.8, "dryer_kw": 3, "dry_time": 2, "high_temp": False}, # 新增 PPC
     "ETFE": {"price": 2300, "factor": 2.3, "dryer_kw": 5, "dry_time": 4, "high_temp": True},
     "ETFE+CF": {"price": 1961, "factor": 2.5, "dryer_kw": 5, "dry_time": 4, "high_temp": True},
     "PPS":  {"price": 600,  "factor": 1.8, "dryer_kw": 4, "dry_time": 4, "high_temp": True},
