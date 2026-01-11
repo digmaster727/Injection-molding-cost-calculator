@@ -2,7 +2,69 @@ import streamlit as st
 import pandas as pd
 
 # ==========================================
-# 1. 系統參數與資料庫
+# 0. Apple UI 風格設定 (CSS魔法區)
+# ==========================================
+st.set_page_config(page_title="射出報價", page_icon="🍎", layout="centered")
+
+# 隱藏 Streamlit 預設選單與 footer
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            
+            /* Apple 風格卡片 */
+            .apple-card {
+                background-color: #ffffff;
+                border-radius: 16px;
+                padding: 20px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+                margin-bottom: 20px;
+                border: 1px solid #f0f0f5;
+            }
+            
+            /* 報價大數字 */
+            .price-tag {
+                font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                font-size: 42px;
+                font-weight: 700;
+                color: #007AFF; /* Apple Blue */
+                text-align: center;
+                margin-top: 10px;
+                margin-bottom: 10px;
+            }
+            
+            /* 列表項目 */
+            .list-item {
+                display: flex;
+                justify-content: space-between;
+                padding: 12px 0;
+                border-bottom: 1px solid #f0f0f5;
+                font-family: -apple-system, sans-serif;
+                color: #1c1c1e;
+            }
+            .list-item:last-child {
+                border-bottom: none;
+            }
+            .item-label {
+                font-size: 15px;
+                color: #8e8e93; /* Apple Gray */
+            }
+            .item-value {
+                font-size: 16px;
+                font-weight: 600;
+            }
+            
+            /* 輸入區塊背景微調 */
+            .stApp {
+                background-color: #F2F2F7; /* iOS Settings Background */
+            }
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
+
+# ==========================================
+# 1. 系統參數與資料庫 (邏輯完全保留)
 # ==========================================
 ELEC_RATE = 5.0      
 LOSS_RATE = 0.05     
@@ -31,13 +93,10 @@ PACKING_OPTIONS = {
     "C級-外銷木箱": {"rate": 5.0, "base": 1200},
 }
 
-# ------------------------------------------
-# 輔助函式: 獨立出來以便前端即時呼叫
-# ------------------------------------------
+# 輔助函式
 def get_auto_tonnage(weight):
     for r, data in MACHINE_DB.items():
-        if weight <= data["max_weight"]:
-            return int((r[0] + r[1]) / 2)
+        if weight <= data["max_weight"]: return int((r[0] + r[1]) / 2)
     return 350
 
 def get_machine_data(t):
@@ -48,23 +107,17 @@ def get_machine_data(t):
 def estimate_cycle(weight, mat_key, thickness_key, machine_data):
     mat_data = MATERIAL_DB.get(mat_key, {})
     thick_factor = THICKNESS_OPTIONS.get(thickness_key, 1.0)
-    
     if not mat_data: return 0
-    
     base_cool = (weight / 100) * 15.0
     mat_temp_factor = 1.4 if mat_data["high_temp"] else 1.0
-    
-    cycle = machine_data["dry_cycle"] + \
-            ((weight/100)*4.0) + \
-            (base_cool * mat_temp_factor * thick_factor)
+    cycle = machine_data["dry_cycle"] + ((weight/100)*4.0) + (base_cool * mat_temp_factor * thick_factor)
     return int(cycle)
 
 # ==========================================
 # 2. 運算邏輯核心
 # ==========================================
 class SmartInjectionQuote:
-    def __init__(self, weight_g, material, batch_size, 
-                 thickness, packing, tonnage, cycle_sec, is_auto_tonnage, is_auto_cycle):
+    def __init__(self, weight_g, material, batch_size, thickness, packing, tonnage, cycle_sec):
         self.weight = weight_g
         self.material = material
         self.batch = batch_size
@@ -72,137 +125,109 @@ class SmartInjectionQuote:
         self.packing = packing
         self.tonnage = tonnage
         self.cycle_sec = cycle_sec
-        self.is_auto_tonnage = is_auto_tonnage
-        self.is_auto_cycle = is_auto_cycle
-        
         self.machine_data = get_machine_data(tonnage)
         self.mat_data = MATERIAL_DB.get(material, {})
         self.pack_data = PACKING_OPTIONS.get(packing, {"rate": 2.0, "base": 0})
 
     def compute(self):
         if not self.mat_data: return None
-
-        # 五大成本
-        # 1. 材料
+        # 五大成本計算
         unit_mat_cost = (self.weight / 1000) * self.mat_data["price"] * (1 + LOSS_RATE)
-        formula_mat = f"{self.weight/1000}kg * ${self.mat_data['price']} * 1.05"
-
-        # 2. 加工
         rate = self.machine_data["rate"]
         m_factor = self.mat_data["factor"]
         unit_process_cost = rate * m_factor * (self.cycle_sec / 60)
-        formula_process = f"${rate}/分 * 係數{m_factor} * ({self.cycle_sec}s/60)"
-
-        # 3. 基本費
         preheat_cost = (self.mat_data["dryer_kw"]*0.8) * self.mat_data["dry_time"] * ELEC_RATE
-        setup_total = 1500 + preheat_cost
-        unit_basic_cost = setup_total / self.batch
-        formula_basic = f"(調機$1500+電費${int(preheat_cost)})/{self.batch}"
-
-        # 4. 包裝
+        unit_basic_cost = (1500 + preheat_cost) / self.batch
         w_kg = self.weight / 1000
         unit_pack_cost = (w_kg * self.pack_data["rate"]) + (self.pack_data["base"] / self.batch)
-        formula_pack = f"({w_kg}kg*${self.pack_data['rate']}) + (基費/{self.batch})"
-
-        # 5. 運費
         total_w = w_kg * self.batch
         ship_total = max(500, total_w * 2.0)
         unit_ship_cost = ship_total / self.batch
-        formula_ship = f"總運費${int(ship_total)} / {self.batch}"
-
         final_price = unit_mat_cost + unit_process_cost + unit_basic_cost + unit_pack_cost + unit_ship_cost
 
         return {
-            "Meta": {
-                "機台": f"{self.tonnage}T ({'自動' if self.is_auto_tonnage else '手動'})",
-                "週期": f"{self.cycle_sec}s ({'自動' if self.is_auto_cycle else '手動'})"
-            },
+            "Meta": {"機台": f"{self.tonnage}T", "週期": f"{self.cycle_sec}s"},
             "Cost_Structure": [
-                {"項目": "1.材料成本 (含5%損)", "計算式": formula_mat, "金額": round(unit_mat_cost, 2)},
-                {"項目": "2.射出加工 (含電費)", "計算式": formula_process, "金額": round(unit_process_cost, 2)},
-                {"項目": "3.基本攤提 (含暖機)", "計算式": formula_basic, "金額": round(unit_basic_cost, 2)},
-                {"項目": "4.包裝費用", "計算式": formula_pack, "金額": round(unit_pack_cost, 2)},
-                {"項目": "5.運費分攤 (國內)", "計算式": formula_ship, "金額": round(unit_ship_cost, 2)}
+                {"name": "材料費", "sub": "含5%損耗", "val": unit_mat_cost},
+                {"name": "射出費", "sub": "含電費與技術加成", "val": unit_process_cost},
+                {"name": "基本費", "sub": "暖機與調機攤提", "val": unit_basic_cost},
+                {"name": "包裝費", "sub": self.packing.split('-')[0], "val": unit_pack_cost},
+                {"name": "運費", "sub": "國內回頭車", "val": unit_ship_cost}
             ],
             "Total_Price": round(final_price, 2)
         }
 
 # ==========================================
-# 3. Streamlit 網頁介面設計 (前端邏輯優化)
+# 3. 前端介面設計 (Apple Style)
 # ==========================================
-st.set_page_config(page_title="射出報價計算器", page_icon="🏭")
 
-st.title("🏭 塑膠射出成本計算 v2.1")
-st.markdown("無軸封泵浦品技課專用 | **數值即時連動版**")
+# 標題區
+st.markdown("<h2 style='text-align: center; color: #1c1c1e;'>Injection Cost</h2>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #8e8e93; font-size: 14px;'>無軸封泵浦報價系統 v3.0</p>", unsafe_allow_html=True)
 
-with st.container():
-    st.subheader("1. 產品參數")
-    col1, col2 = st.columns(2)
-    with col1:
-        weight_g = st.number_input("產品重量 (g)", min_value=1.0, value=200.0, step=10.0)
-        batch_size = st.number_input("生產批量 (pcs)", min_value=1, value=50, step=50)
-    with col2:
-        material = st.selectbox("材料種類", list(MATERIAL_DB.keys()), index=4) # 預設 ETFE+CF
-        thickness = st.selectbox("壁厚特徵", list(THICKNESS_OPTIONS.keys()), index=1)
+# 輸入卡片
+st.markdown('<div class="apple-card">', unsafe_allow_html=True)
+st.markdown('<h4 style="color: #1c1c1e; margin-bottom: 15px;">產品參數</h4>', unsafe_allow_html=True)
 
-    st.subheader("2. 後勤設定")
-    packing = st.selectbox("包裝等級", list(PACKING_OPTIONS.keys()))
-    
-    # --- 關鍵修改：即時計算預覽值 ---
-    # 1. 先算出系統建議值
-    suggested_tonnage = get_auto_tonnage(weight_g)
-    
-    # 為了算週期，需先確認機台參數
-    temp_machine_data = get_machine_data(suggested_tonnage)
-    suggested_cycle = estimate_cycle(weight_g, material, thickness, temp_machine_data)
-    
-    # --- 進階設定區 ---
-    with st.expander("🛠️ 進階設定 (機台/週期)", expanded=True):
-        col_set1, col_set2 = st.columns(2)
-        
-        # 機台設定邏輯
-        with col_set1:
-            use_manual_tonnage = st.checkbox("手動指定機台?")
-            if use_manual_tonnage:
-                final_tonnage = st.number_input("機台噸數 (Ton)", value=150)
-            else:
-                # 這裡: 如果不手動，直接顯示「建議值」在欄位中，並鎖定
-                st.number_input(f"機台噸數 (自動建議)", value=suggested_tonnage, disabled=True)
-                final_tonnage = suggested_tonnage
+col1, col2 = st.columns(2)
+with col1:
+    weight_g = st.number_input("產品重量 (g)", value=200.0, step=10.0)
+    batch_size = st.number_input("批量 (pcs)", value=50, step=50)
+    packing = st.selectbox("包裝", list(PACKING_OPTIONS.keys()))
+with col2:
+    material = st.selectbox("材料", list(MATERIAL_DB.keys()), index=4)
+    thickness = st.selectbox("壁厚", list(THICKNESS_OPTIONS.keys()), index=1)
 
-        # 週期設定邏輯
-        with col_set2:
-            use_manual_cycle = st.checkbox("手動指定週期?")
-            if use_manual_cycle:
-                final_cycle = st.number_input("成形週期 (秒)", value=int(suggested_cycle))
-            else:
-                # 這裡: 如果不手動，直接顯示「建議值」在欄位中，並鎖定
-                st.number_input(f"成形週期 (自動估算)", value=int(suggested_cycle), disabled=True)
-                final_cycle = int(suggested_cycle)
+# 即時運算邏輯
+suggested_tonnage = get_auto_tonnage(weight_g)
+temp_machine = get_machine_data(suggested_tonnage)
+suggested_cycle = estimate_cycle(weight_g, material, thickness, temp_machine)
 
-# 計算按鈕
-if st.button("🚀 開始計算報價", type="primary", use_container_width=True):
-    calculator = SmartInjectionQuote(
-        weight_g=weight_g,
-        material=material,
-        batch_size=batch_size,
-        thickness=thickness,
-        packing=packing,
-        tonnage=final_tonnage,
-        cycle_sec=final_cycle,
-        is_auto_tonnage=not use_manual_tonnage,
-        is_auto_cycle=not use_manual_cycle
-    )
-    
-    res = calculator.compute()
-    
-    if res:
-        st.divider()
-        st.subheader("💰 報價結果")
-        st.metric(label="預估單價 (NTD)", value=f"${res['Total_Price']}")
-        st.info(f"機台設定: {res['Meta']['機台']} | 最終週期: {res['Meta']['週期']}")
-        
-        df = pd.DataFrame(res["Cost_Structure"])
-        st.table(df)
+# 進階設定 (收合式)
+with st.expander("進階設定 (機台/週期)"):
+    use_manual = st.toggle("手動模式", value=False)
+    if use_manual:
+        final_tonnage = st.number_input("機台 (Ton)", value=suggested_tonnage)
+        final_cycle = st.number_input("週期 (Sec)", value=suggested_cycle)
     else:
-        st.error("計算錯誤，請檢查輸入參數")
+        st.caption(f"系統自動鎖定: {suggested_tonnage}噸 / {suggested_cycle}秒")
+        final_tonnage = suggested_tonnage
+        final_cycle = suggested_cycle
+        
+st.markdown('</div>', unsafe_allow_html=True) # End card
+
+# 執行計算
+calculator = SmartInjectionQuote(weight_g, material, batch_size, thickness, packing, final_tonnage, final_cycle)
+res = calculator.compute()
+
+if res:
+    # 結果顯示區 - 模仿 Apple Wallet 交易明細
+    st.markdown(f"""
+    <div class="apple-card">
+        <p style="text-align: center; color: #8e8e93; font-size: 14px; margin-bottom: 0;">預估單價</p>
+        <div class="price-tag">NT$ {res['Total_Price']}</div>
+        <hr style="border: 0; border-top: 1px solid #f0f0f5; margin: 20px 0;">
+    """, unsafe_allow_html=True)
+    
+    # 迴圈生成美觀的列表
+    for item in res["Cost_Structure"]:
+        st.markdown(f"""
+        <div class="list-item">
+            <div>
+                <div style="font-weight: 500;">{item['name']}</div>
+                <div class="item-label">{item['sub']}</div>
+            </div>
+            <div class="item-value">${item['val']:.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 底部資訊
+    st.markdown(f"""
+        <div style="margin-top: 20px; text-align: right; font-size: 12px; color: #c7c7cc;">
+            機台: {res['Meta']['機台']} | 週期: {res['Meta']['週期']}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# 按鈕美化 (Streamlit 原生按鈕無法完全改 CSS，但可用 primary 藍色)
+st.button("更新報價 ↻", type="primary", use_container_width=True)
