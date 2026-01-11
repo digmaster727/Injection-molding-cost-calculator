@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 # ==========================================
-# 0. 介面優化：大字體 + 純黑高對比 (High Contrast CSS)
+# 0. 介面優化：白底黑字輸入框 + 高對比
 # ==========================================
 st.set_page_config(page_title="射出報價", page_icon="🏭", layout="centered")
 
@@ -13,80 +13,99 @@ hide_st_style = """
             footer {visibility: hidden;}
             header {visibility: hidden;}
             
-            /* 卡片背景：維持白色，但邊框加深 */
+            /* 卡片背景 */
             .apple-card {
                 background-color: #ffffff;
                 border-radius: 12px;
                 padding: 25px;
-                box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
                 margin-bottom: 25px;
-                border: 2px solid #d1d1d6; /* 邊框加深 */
+                border: 2px solid #d1d1d6;
             }
             
-            /* 價格大字：由藍改深藍，字體特大 */
+            /* 價格大字 */
             .price-tag {
                 font-family: sans-serif;
-                font-size: 56px;  /* 特大 */
-                font-weight: 800; /* 特粗 */
-                color: #0040DD;   /* 深藍色 (高對比) */
+                font-size: 56px;
+                font-weight: 800;
+                color: #000000; /* 純黑 */
                 text-align: center;
                 margin: 15px 0;
             }
             
-            /* 列表項目容器 */
+            /* 列表項目 */
             .list-item {
                 display: flex;
                 justify-content: space-between;
-                align-items: center; /* 垂直置中 */
-                padding: 16px 0;     /* 間距拉大 */
-                border-bottom: 2px solid #e5e5ea; /* 分隔線加粗 */
-                color: #000000;      /* 純黑 */
+                align-items: center;
+                padding: 16px 0;
+                border-bottom: 2px solid #e5e5ea;
+                color: #000000;
             }
             .list-item:last-child {
                 border-bottom: none;
             }
             
-            /* 項目名稱 (左邊) */
+            /* 項目名稱 */
             .item-label-main {
-                font-size: 22px;     /* 放大 */
-                font-weight: 700;    /* 加粗 */
-                color: #000000;      /* 純黑 */
+                font-size: 20px;
+                font-weight: 700;
+                color: #000000;
             }
+            /* 項目說明 (您指定的公式文字) */
             .item-label-sub {
-                font-size: 16px;
-                color: #333333;      /* 深灰，不做淺灰 */
+                font-size: 14px;
+                color: #555555; /* 深灰 */
                 margin-top: 4px;
+                font-weight: 500;
             }
             
-            /* 項目數值 (右邊) */
+            /* 項目數值 */
             .item-value {
-                font-size: 24px;     /* 放大 */
-                font-weight: 700;    /* 加粗 */
-                color: #000000;      /* 純黑 */
+                font-size: 24px;
+                font-weight: 700;
+                color: #000000;
             }
             
-            /* 調整 Streamlit 原生輸入框字體 */
-            .stNumberInput input, .stSelectbox div[data-baseweb="select"] div {
-                font-size: 18px !important;
-                font-weight: 600 !important;
+            /* === 關鍵修改：強制輸入框為 白底黑字 === */
+            /* 針對數字輸入框 */
+            .stNumberInput input {
+                background-color: #ffffff !important;
                 color: #000000 !important;
+                border: 1px solid #cccccc !important;
+                font-weight: bold !important;
+                font-size: 18px !important;
             }
-            p, label {
-                font-size: 18px !important;
+            /* 針對下拉選單 */
+            div[data-baseweb="select"] > div {
+                background-color: #ffffff !important;
                 color: #000000 !important;
-                font-weight: 600 !important;
+                border: 1px solid #cccccc !important;
+                font-weight: bold !important;
+                font-size: 18px !important;
+            }
+            /* 下拉選單內的文字顏色 */
+            div[data-baseweb="select"] span {
+                color: #000000 !important;
             }
             
-            /* 背景設為淺灰，對比白色卡片 */
+            /* 背景設為淺灰 */
             .stApp {
                 background-color: #f0f0f2;
+            }
+            
+            /* 調整標籤文字顏色 */
+            label p {
+                font-size: 18px !important;
+                color: #000000 !important;
+                font-weight: 700 !important;
             }
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
 # ==========================================
-# 1. 系統參數與資料庫 (維持不變)
+# 1. 系統參數與資料庫
 # ==========================================
 ELEC_RATE = 5.0      
 LOSS_RATE = 0.05     
@@ -110,9 +129,9 @@ MATERIAL_DB = {
 THICKNESS_OPTIONS = {"一般 (<5mm)": 1.0, "中厚 (5~8mm)": 1.8, "特厚 (>8mm)": 3.0}
 
 PACKING_OPTIONS = {
-    "A級-工業散裝": {"rate": 2.0, "base": 0},
-    "B級-獨立盒裝": {"rate": 8.0, "base": 0},
-    "C級-外銷木箱": {"rate": 5.0, "base": 1200},
+    "A級-工業散裝": {"rate": 2.0, "base": 0, "name": "A級(工業散裝)"},
+    "B級-獨立盒裝": {"rate": 8.0, "base": 0, "name": "B級(獨立盒裝)"},
+    "C級-外銷木箱": {"rate": 5.0, "base": 1200, "name": "C級(外銷木箱)"},
 }
 
 # 輔助函式
@@ -149,42 +168,67 @@ class SmartInjectionQuote:
         self.cycle_sec = cycle_sec
         self.machine_data = get_machine_data(tonnage)
         self.mat_data = MATERIAL_DB.get(material, {})
-        self.pack_data = PACKING_OPTIONS.get(packing, {"rate": 2.0, "base": 0})
+        # 抓取包裝設定
+        self.pack_data = PACKING_OPTIONS.get(packing, {"rate": 2.0, "base": 0, "name": "未知"})
 
     def compute(self):
         if not self.mat_data: return None
-        # 五大成本計算
+        
+        # 1. 材料費
         unit_mat_cost = (self.weight / 1000) * self.mat_data["price"] * (1 + LOSS_RATE)
+        
+        # 2. 射出費
         rate = self.machine_data["rate"]
         m_factor = self.mat_data["factor"]
         unit_process_cost = rate * m_factor * (self.cycle_sec / 60)
+        
+        # 3. 基本費
         preheat_cost = (self.mat_data["dryer_kw"]*0.8) * self.mat_data["dry_time"] * ELEC_RATE
         unit_basic_cost = (1500 + preheat_cost) / self.batch
+        
+        # 4. 包裝費
         w_kg = self.weight / 1000
         unit_pack_cost = (w_kg * self.pack_data["rate"]) + (self.pack_data["base"] / self.batch)
+        
+        # 5. 運費
         total_w = w_kg * self.batch
         ship_total = max(500, total_w * 2.0)
         unit_ship_cost = ship_total / self.batch
+        
+        # 總價
         final_price = unit_mat_cost + unit_process_cost + unit_basic_cost + unit_pack_cost + unit_ship_cost
 
         return {
             "Meta": {"機台": f"{self.tonnage}T", "週期": f"{self.cycle_sec}s"},
             "Cost_Structure": [
-                {"name": "1.材料費", "sub": "含5%損耗", "val": unit_mat_cost},
-                {"name": "2.射出費", "sub": "機台+技術+電費", "val": unit_process_cost},
-                {"name": "3.基本費", "sub": "暖機電費+調機", "val": unit_basic_cost},
-                {"name": "4.包裝費", "sub": self.packing.split('-')[0], "val": unit_pack_cost},
-                {"name": "5.運費", "sub": "國內回頭車", "val": unit_ship_cost}
+                {"name": "1.材料費", 
+                 "sub": "成品重量*原料單價(公斤/元)", 
+                 "val": unit_mat_cost},
+                 
+                {"name": "2.射出費", 
+                 "sub": "機台費用(分/元)*材料加成係數*射出時間(分)", 
+                 "val": unit_process_cost},
+                 
+                {"name": "3.基本費", 
+                 "sub": "(烘料費用+洗料費用+調機費用+上下模+暖機)/批量", 
+                 "val": unit_basic_cost},
+                 
+                {"name": "4.包裝費", 
+                 "sub": self.pack_data["name"], 
+                 "val": unit_pack_cost},
+                 
+                {"name": "5.運費", 
+                 "sub": "國內回頭車", 
+                 "val": unit_ship_cost}
             ],
-            "Total_Price": round(final_price, 2)
+            "Total_Price": final_price
         }
 
 # ==========================================
-# 3. 前端介面設計 (大字體版)
+# 3. 前端介面設計
 # ==========================================
 
-# 標題區
-st.markdown("<h2 style='text-align: center; color: #000000; font-weight: 800; font-size: 32px;'>射出成本計算 v3.1</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #000000; font-weight: 800; font-size: 32px;'>射出成本計算 v3.2</h2>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #333333; font-size: 18px; font-weight: bold;'>無軸封泵浦品技課專用</p>", unsafe_allow_html=True)
 
 # 輸入卡片
@@ -194,26 +238,25 @@ col1, col2 = st.columns(2)
 with col1:
     weight_g = st.number_input("產品重量 (g)", value=200.0, step=10.0)
     batch_size = st.number_input("批量 (pcs)", value=50, step=50)
-    packing = st.selectbox("包裝", list(PACKING_OPTIONS.keys()))
+    # 包裝顯示名稱與計算分離
+    packing_labels = list(PACKING_OPTIONS.keys())
+    packing = st.selectbox("包裝", packing_labels)
 with col2:
     material = st.selectbox("材料", list(MATERIAL_DB.keys()), index=4)
     thickness = st.selectbox("壁厚", list(THICKNESS_OPTIONS.keys()), index=1)
 
-# 即時運算邏輯
 suggested_tonnage = get_auto_tonnage(weight_g)
 temp_machine = get_machine_data(suggested_tonnage)
 suggested_cycle = estimate_cycle(weight_g, material, thickness, temp_machine)
 
-st.divider() # 分隔線
+st.divider()
 
-# 進階設定 (字體加粗)
 with st.expander("🛠️ 進階設定 (手動輸入機台/週期)"):
     use_manual = st.toggle("開啟手動模式", value=False)
     if use_manual:
         final_tonnage = st.number_input("機台噸數 (Ton)", value=suggested_tonnage)
         final_cycle = st.number_input("成形週期 (秒)", value=suggested_cycle)
     else:
-        # 顯示自動計算結果
         col_a, col_b = st.columns(2)
         with col_a:
             st.markdown(f"<p style='color:#333; font-size:16px;'>建議機台</p><p style='color:#000; font-size:24px; font-weight:bold;'>{suggested_tonnage} 噸</p>", unsafe_allow_html=True)
@@ -222,34 +265,37 @@ with st.expander("🛠️ 進階設定 (手動輸入機台/週期)"):
         final_tonnage = suggested_tonnage
         final_cycle = suggested_cycle
         
-st.markdown('</div>', unsafe_allow_html=True) # End input card
+st.markdown('</div>', unsafe_allow_html=True)
 
 # 執行計算
 calculator = SmartInjectionQuote(weight_g, material, batch_size, thickness, packing, final_tonnage, final_cycle)
 res = calculator.compute()
 
 if res:
-    # 結果顯示區
+    # 四捨五入取整數
+    final_total_int = int(round(res['Total_Price']))
+    
     st.markdown(f"""
     <div class="apple-card">
         <p style="text-align: center; color: #000000; font-size: 20px; font-weight: bold; margin-bottom: 0;">預估單價 (NTD)</p>
-        <div class="price-tag">${res['Total_Price']}</div>
+        <div class="price-tag">${final_total_int}</div>
         <hr style="border: 0; border-top: 2px solid #e5e5ea; margin: 20px 0;">
     """, unsafe_allow_html=True)
     
-    # 迴圈生成高對比列表
     for item in res["Cost_Structure"]:
+        # 每一項金額也四捨五入取整
+        val_int = int(round(item['val']))
+        
         st.markdown(f"""
         <div class="list-item">
-            <div>
+            <div style="flex: 3;">
                 <div class="item-label-main">{item['name']}</div>
                 <div class="item-label-sub">{item['sub']}</div>
             </div>
-            <div class="item-value">${item['val']:.2f}</div>
+            <div class="item-value" style="flex: 1; text-align: right;">${val_int}</div>
         </div>
         """, unsafe_allow_html=True)
 
-    # 底部資訊
     st.markdown(f"""
         <div style="margin-top: 25px; text-align: center; font-size: 16px; color: #333333; font-weight: bold;">
             機台: {res['Meta']['機台']} | 週期: {res['Meta']['週期']}
@@ -257,5 +303,4 @@ if res:
     </div>
     """, unsafe_allow_html=True)
 
-# 按鈕
 st.button("更新報價 ↻", type="primary", use_container_width=True)
